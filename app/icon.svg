@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="visage" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#ffe066"/>
+      <stop offset="100%" stop-color="#f5b800"/>
+    </radialGradient>
+  </defs>
+  <!-- Visage jaune -->
+  <circle cx="32" cy="32" r="29" fill="url(#visage)" stroke="#c98a00" stroke-width="2"/>
+  <!-- Yeux -->
+  <ellipse cx="22.5" cy="25" rx="3.6" ry="5.4" fill="#3b2a00"/>
+  <ellipse cx="41.5" cy="25" rx="3.6" ry="5.4" fill="#3b2a00"/>
+  <!-- Sourire -->
+  <path d="M17 37 Q32 53 47 37" fill="none" stroke="#3b2a00" stroke-width="4" stroke-linecap="round"/>
+</svg>

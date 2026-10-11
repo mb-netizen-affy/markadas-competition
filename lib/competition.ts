@@ -29,12 +29,15 @@ export function repartir<T>(liste: T[], nb: number): T[][] {
 // Finaliste = présent ET coché au 1er tour ou au repêchage
 export const estFinaliste = (d: Danseur) => d.present === true && (d.qualif_t1 || d.qualif_rep);
 
-// Or = coché en finale ; Argent = finaliste du 1er tour ; Bronze = finaliste du repêchage
+// Tous les danseurs présents reçoivent une médaille :
+// - 1er tour : sélectionné → finale, sinon → repêchage
+// - Repêchage : sélectionné → finale, sinon → BRONZE
+// - Finale : sélectionné → OR, sinon → ARGENT
 export type Medaille = "or" | "argent" | "bronze" | null;
 export function medaille(d: Danseur): Medaille {
-  if (!estFinaliste(d)) return null;
-  if (d.or_finale) return "or";
-  return d.qualif_t1 ? "argent" : "bronze";
+  if (d.present !== true) return null; // absent ou pas encore pointé
+  if (estFinaliste(d)) return d.or_finale ? "or" : "argent";
+  return "bronze";
 }
 
 // Clics du jury : on garde les données cohérentes

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // En-tête commun à toutes les pages
 // Le logo est lu dans public/logo-markadas.png ; s'il manque, on affiche "MARKADAS" en rouge.
@@ -17,6 +17,14 @@ export default function Entete({
   children?: React.ReactNode;
 }) {
   const [logoOk, setLogoOk] = useState(true);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // Si l'image a déjà échoué avant que la page soit interactive, onError ne se déclenche pas :
+  // on vérifie donc au chargement de la page si le logo s'est bien affiché.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth === 0) setLogoOk(false);
+  }, []);
 
   return (
     <header className="sticky top-0 z-20 border-b border-mk-ligne bg-mk-noir/95 backdrop-blur">
@@ -26,6 +34,7 @@ export default function Entete({
             {logoOk ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
+                ref={imgRef}
                 src="/logo-markadas.png"
                 alt="Markadas"
                 className="h-10 w-auto"

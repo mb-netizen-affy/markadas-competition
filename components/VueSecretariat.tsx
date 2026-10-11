@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import * as XLSX from "xlsx";
 import { useCategorie } from "@/lib/useCategorie";
@@ -52,7 +53,14 @@ export default function VueSecretariat({ slug }: { slug: string }) {
       <Entete
         titre={categorie.nom}
         sousTitre={`Secrétariat · Jury ${categorie.jury}`}
-        droite={<button onClick={exporter} className="mk-btn mk-btn-rouge text-xs">Export Excel</button>}
+        droite={
+          <div className="flex shrink-0 gap-2">
+            <Link href={`/espace/secretariat/${categorie.jury}`} className="mk-btn mk-btn-contour px-3 py-1.5 text-xs">
+              ☰ Catégories
+            </Link>
+            <button onClick={exporter} className="mk-btn mk-btn-rouge text-xs">Export Excel</button>
+          </div>
+        }
       >
         <div className="flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wide">
           <Puce label="Inscrits" valeur={danseurs.length} />

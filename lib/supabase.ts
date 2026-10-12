@@ -14,6 +14,7 @@ export type Categorie = {
   retenus_par_passage: number[]; // plus utilisé : le jury qualifie librement
   retenus_repechage: number;     // plus utilisé
   ordre: number;
+  demarree: boolean;             // true = 1er tour démarré, passages figés
 };
 
 export type Danseur = {
@@ -26,6 +27,7 @@ export type Danseur = {
   qualif_t1: boolean;
   qualif_rep: boolean;
   or_finale: boolean;
+  passage: number | null;        // n° de passage figé au démarrage (null = pas encore placé)
 };
 
 // Réglages généraux de la compétition (une seule ligne, id = 1)

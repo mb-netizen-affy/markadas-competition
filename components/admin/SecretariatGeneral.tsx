@@ -48,6 +48,7 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
 
   useEffect(() => {
     let annule = false;
+    let connecteUneFois = false;
     const recharger = () =>
       chargerTousLesDanseurs()
         .then((ds) => { if (!annule) { setDanseurs(ds); setChargement(false); } })
@@ -66,7 +67,13 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
           recharger();
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Après une coupure réseau : on recharge pour rattraper ce qui a changé
+        if (status === "SUBSCRIBED") {
+          if (connecteUneFois) recharger();
+          connecteUneFois = true;
+        }
+      });
 
     return () => {
       annule = true;

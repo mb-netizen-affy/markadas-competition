@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase, REGLAGES_DEFAUT, type Categorie, type Danseur, type Reglages } from "./supabase";
+import { actifs, nbPassagesAuto, repartir } from "./competition";
 
 export function useCategorie(slug: string) {
   const [categorie, setCategorie] = useState<Categorie | null>(null);
@@ -13,6 +14,7 @@ export function useCategorie(slug: string) {
   useEffect(() => {
     let annule = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let dejaConnecte = false;
 
     async function charger() {
       const { data: cat, error } = await supabase
@@ -67,7 +69,16 @@ export function useCategorie(slug: string) {
             if (payload.new && "lignes" in payload.new) setReglages(payload.new as Reglages);
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          if (status !== "SUBSCRIBED") return;
+          // Après une coupure réseau : on recharge tout pour rattraper ce qui a changé entre-temps
+          if (dejaConnecte) {
+            chargerDanseurs();
+            supabase.from("categories").select("*").eq("id", cat.id).single()
+              .then(({ data }) => { if (!annule && data) setCategorie(data); });
+          }
+          dejaConnecte = true;
+        });
     }
 
     charger();
@@ -87,5 +98,27 @@ export function useCategorie(slug: string) {
     }
   }
 
-  return { categorie, danseurs, reglages, chargement, erreur, modifier };
+  // Démarre la catégorie : fige la composition des passages du 1er tour
+  async function demarrer() {
+    if (!categorie) return false;
+    const passages = repartir(actifs(danseurs), nbPassagesAuto(actifs(danseurs).length, reglages));
+    for (let i = 0; i < passages.length; i++) {
+      const ids = passages[i].map((d) => d.id);
+      if (!ids.length) continue;
+      const { error } = await supabase.from("danseurs").update({ passage: i + 1 }).in("id", ids);
+      if (error) {
+        alert("Erreur : " + error.message);
+        return false;
+      }
+    }
+    const { error } = await supabase.from("categories").update({ demarree: true }).eq("id", categorie.id);
+    if (error) {
+      alert("Erreur : " + error.message);
+      return false;
+    }
+    setCategorie({ ...categorie, demarree: true });
+    return true;
+  }
+
+  return { categorie, danseurs, reglages, chargement, erreur, modifier, demarrer };
 }

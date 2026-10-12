@@ -74,6 +74,18 @@ function CarteCategorie({
     else onChange();
   }
 
+  async function annulerDemarrage() {
+    if (!confirm(
+      `Annuler le démarrage de « ${cat.nom} » ?\n\n` +
+      "Les passages redeviennent provisoires (recalculés avec les présents). " +
+      "Les sélections du jury sont conservées."
+    )) return;
+    await supabase.from("danseurs").update({ passage: null }).eq("categorie_id", cat.id);
+    const { error } = await supabase.from("categories").update({ demarree: false }).eq("id", cat.id);
+    if (error) alert("Erreur : " + error.message);
+    else onChange();
+  }
+
   async function supprimer() {
     if (!confirm(`Supprimer « ${cat.nom} » et ses ${nbDanseurs} danseurs ?`)) return;
     const { error } = await supabase.from("categories").delete().eq("id", cat.id);
@@ -92,6 +104,12 @@ function CarteCategorie({
           className={`${champ} min-w-40 flex-1 text-lg font-extrabold uppercase`}
         />
         <span className="text-xs font-semibold uppercase text-mk-gris">{nbDanseurs} danseurs inscrits</span>
+        {cat.demarree && (
+          <span className="flex items-center gap-2 rounded bg-mk-rouge/20 px-2 py-1 text-xs font-bold text-red-300">
+            🔒 DÉMARRÉE
+            <button onClick={annulerDemarrage} className="underline">annuler</button>
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">

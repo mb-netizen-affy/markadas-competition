@@ -64,3 +64,19 @@ export const maxParPassage = (r: Reglages) => Math.max(1, r.lignes * r.par_ligne
 export function nbPassagesAuto(n: number, r: Reglages) {
   return Math.max(1, Math.ceil(n / maxParPassage(r)));
 }
+
+// ───────── Passages figés ─────────
+// Avant le démarrage : passages provisoires recalculés en direct à partir des présents.
+// Après le démarrage : chaque danseur garde son n° de passage ; un danseur pointé présent
+// après le démarrage n'a pas de passage et va directement au repêchage.
+export function passagesDuPremierTour(liste: Danseur[], demarree: boolean, r: Reglages): Danseur[][] {
+  if (!demarree) return repartir(liste, nbPassagesAuto(liste.length, r));
+  const nb = Math.max(0, ...liste.map((d) => d.passage ?? 0));
+  const passages: Danseur[][] = Array.from({ length: nb }, () => []);
+  for (const d of liste) if (d.passage) passages[d.passage - 1].push(d);
+  return passages.filter((p) => p.length > 0);
+}
+
+// Arrivé après le démarrage (présent mais sans passage au 1er tour)
+export const estRetardataire = (d: Danseur, demarree: boolean) =>
+  demarree && d.present === true && !d.passage;

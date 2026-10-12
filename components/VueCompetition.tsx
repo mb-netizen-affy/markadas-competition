@@ -3,23 +3,30 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useCategorie } from "@/lib/useCategorie";
-import { actifs, repartir, fmt, basculerT1, basculerRep, basculerOr, nbPassagesAuto } from "@/lib/competition";
+import {
+  actifs, repartir, fmt, basculerT1, basculerRep, basculerOr,
+  passagesDuPremierTour, estRetardataire,
+} from "@/lib/competition";
 import type { Danseur } from "@/lib/supabase";
 import Entete, { Etat } from "@/components/Entete";
 
 type Onglet = "t1" | "rep" | "finale";
 
 export default function VueCompetition({ slug, lectureSeule = false }: { slug: string; lectureSeule?: boolean }) {
-  const { categorie, danseurs, reglages, chargement, erreur, modifier } = useCategorie(slug);
+  const { categorie, danseurs, reglages, chargement, erreur, modifier, demarrer } = useCategorie(slug);
+  const [demarrage, setDemarrage] = useState(false);
   const [onglet, setOnglet] = useState<Onglet>("t1");
 
   const liste = useMemo(() => actifs(danseurs), [danseurs]);
   const nonPointes = danseurs.filter((d) => d.present === null).length;
-  // Nombre de passages calculé automatiquement selon les présents et la place sur la piste
+  const demarree = categorie?.demarree ?? false;
+  // Avant le démarrage : passages provisoires (recalculés en direct)
+  // Après : passages figés ; les retardataires vont directement au repêchage
   const passagesT1 = useMemo(
-    () => repartir(liste, nbPassagesAuto(liste.length, reglages)),
-    [liste, reglages]
+    () => passagesDuPremierTour(liste, demarree, reglages),
+    [liste, demarree, reglages]
   );
+  const retardataires = liste.filter((d) => estRetardataire(d, demarree)).length;
   const repechage = useMemo(() => liste.filter((d) => !d.qualif_t1), [liste]);
   const finale = useMemo(() => liste.filter((d) => d.qualif_t1 || d.qualif_rep), [liste]);
 
@@ -28,6 +35,19 @@ export default function VueCompetition({ slug, lectureSeule = false }: { slug: s
 
   const clic = (f: (d: Danseur) => Partial<Danseur>) =>
     lectureSeule ? undefined : (d: Danseur) => modifier(d, f(d));
+
+  async function clicDemarrer() {
+    const msg =
+      `Démarrer « ${categorie!.nom} » ?\n\n` +
+      `Les ${passagesT1.length} passages seront figés avec les ${liste.length} danseurs présents.` +
+      (nonPointes > 0
+        ? `\n\n${nonPointes} danseur(s) ne sont pas encore pointés : s'ils arrivent, ils iront directement au repêchage.`
+        : "");
+    if (!confirm(msg)) return;
+    setDemarrage(true);
+    await demarrer();
+    setDemarrage(false);
+  }
 
   const onglets: { id: Onglet; label: string }[] = [
     { id: "t1", label: "1er tour" },
@@ -49,11 +69,27 @@ export default function VueCompetition({ slug, lectureSeule = false }: { slug: s
           </Link>
         }
       >
-        {nonPointes > 0 && (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-            ⚠️ {nonPointes} danseur(s) pas encore pointé(s) : ils n&apos;apparaissent pas tant
-            qu&apos;ils ne sont pas déclarés présents, et les passages peuvent encore bouger.
-          </p>
+        {!demarree ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+            <span>
+              ⏳ Passages <b>provisoires</b>
+              {nonPointes > 0 && <> · {nonPointes} danseur(s) pas encore pointé(s)</>}
+              {lectureSeule && " · en attente du démarrage par le jury"}
+            </span>
+            {!lectureSeule && (
+              <button onClick={clicDemarrer} disabled={demarrage || liste.length === 0} className="mk-btn mk-btn-rouge">
+                {demarrage ? "Démarrage…" : "▶ Démarrer la catégorie"}
+              </button>
+            )}
+          </div>
+        ) : (
+          (nonPointes > 0 || retardataires > 0) && (
+            <p className="rounded-md border border-mk-ligne bg-mk-carte px-3 py-2 text-sm text-mk-gris">
+              🔒 Passages figés
+              {retardataires > 0 && <> · <b className="text-mk-texte">{retardataires} retardataire(s)</b> ajouté(s) au repêchage</>}
+              {nonPointes > 0 && <> · {nonPointes} non pointé(s) : s&apos;ils arrivent, ils iront au repêchage</>}
+            </p>
+          )
         )}
         <nav className="grid grid-cols-3 gap-2">
           {onglets.map((o) => (
@@ -78,8 +114,14 @@ export default function VueCompetition({ slug, lectureSeule = false }: { slug: s
               danseurs={p}
               aRetenir={0}
               estCoche={(d) => d.qualif_t1}
-              onClic={clic(basculerT1)}
-              consigne={lectureSeule ? "En rouge : qualifiés directement en finale · les autres vont au repêchage" : "Touchez les dossards qualifiés pour la finale · les autres vont au repêchage"}
+              onClic={demarree ? clic(basculerT1) : undefined}
+              consigne={
+                !demarree
+                  ? "Aperçu des passages · le jury pourra sélectionner une fois la catégorie démarrée"
+                  : lectureSeule
+                    ? "En rouge : qualifiés directement en finale · les autres vont au repêchage"
+                    : "Touchez les dossards qualifiés pour la finale · les autres vont au repêchage"
+              }
             />
           ))}
 
@@ -91,6 +133,7 @@ export default function VueCompetition({ slug, lectureSeule = false }: { slug: s
             aRetenir={0}
             estCoche={(d) => d.qualif_rep}
             onClic={clic(basculerRep)}
+            etiquette={retardataires > 0 ? (d) => (estRetardataire(d, demarree) ? "retard" : "") : undefined}
             consigne={lectureSeule ? "En rouge : repêchés pour la finale · les autres = Bronze" : "Touchez les dossards repêchés pour la finale · les autres = Bronze"}
           />
         )}

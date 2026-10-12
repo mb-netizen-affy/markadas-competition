@@ -155,7 +155,8 @@ export default function ImportExcel({
         for (const c of data ?? []) ids.set(normaliser(c.nom), c.id);
       }
 
-      // 2. Vider la liste actuelle des danseurs
+      // 2. Vider la liste actuelle des danseurs (et remettre les catégories "non démarrées")
+      await supabase.from("categories").update({ demarree: false }).not("id", "is", null);
       const { error: errSuppr } = await supabase.from("danseurs").delete().not("id", "is", null);
       if (errSuppr) throw errSuppr;
 
@@ -216,10 +217,10 @@ export default function ImportExcel({
               {[
                 ["Catégorie", "Dossard", "Nom", "Prénom"],
                 ["Hip Hop", "1", "GENSEL", "Yoan"],
-                ["Ragga", "1", "GENSEL", "Léa"],
                 ["Hip Hop", "2", "DIAZ", "Cynthia"],
-                ["Hip Hop", "3", "MAUGER", "Martin"],
-                ["Ragga", "1", "LAROCHE", "Chloé"],
+                ["Hip Hop", "3", "LAGOUTTE", "Karim"],
+                ["Ragga", "1", "MARTIN", "Léa"],
+                ["Girly", "1", "BERNARD", "Inès"],
               ].map((ligne, i) => (
                 <tr key={i} className={`border-t border-mk-ligne ${i === 0 ? "bg-mk-carte2 font-bold" : ""}`}>
                   <td className="border-r border-mk-ligne bg-mk-noir p-1 text-center text-xs text-mk-gris">{i + 1}</td>

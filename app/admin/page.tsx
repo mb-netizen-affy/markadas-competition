@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { supabase, REGLAGES_DEFAUT, type Categorie, type Reglages } from "@/lib/supabase";
 import Entete from "@/components/Entete";
@@ -8,8 +9,9 @@ import GestionCategories from "@/components/admin/GestionCategories";
 import Liens from "@/components/admin/Liens";
 import ReglagesPassages from "@/components/admin/ReglagesPassages";
 import SecretariatGeneral from "@/components/admin/SecretariatGeneral";
+import GestionDanseurs from "@/components/admin/GestionDanseurs";
 
-type Onglet = "categories" | "import" | "liens" | "secretariat";
+type Onglet = "categories" | "danseurs" | "import" | "liens" | "secretariat";
 
 export default function AdminPage() {
   const [categories, setCategories] = useState<Categorie[]>([]);
@@ -48,18 +50,22 @@ export default function AdminPage() {
   async function remiseAZero() {
     if (!confirm(
       "Remettre la compétition à zéro ?\n\n" +
-      "Toutes les présences et sélections du jury seront effacées. La liste des danseurs est conservée."
+      "Toutes les présences, les passages figés et les sélections du jury seront effacés. " +
+      "La liste des danseurs est conservée."
     )) return;
     const { error } = await supabase
       .from("danseurs")
-      .update({ present: null, qualif_t1: false, qualif_rep: false, or_finale: false })
+      .update({ present: null, qualif_t1: false, qualif_rep: false, or_finale: false, passage: null })
       .not("id", "is", null);
-    alert(error ? "Erreur : " + error.message : "✅ Compétition remise à zéro");
+    const { error: e2 } = await supabase.from("categories").update({ demarree: false }).not("id", "is", null);
+    alert(error || e2 ? "Erreur : " + (error ?? e2)!.message : "✅ Compétition remise à zéro");
+    charger();
   }
 
   const total = Object.values(compteurs).reduce((a, b) => a + b, 0);
   const onglets: { id: Onglet; label: string }[] = [
     { id: "categories", label: "Catégories" },
+    { id: "danseurs", label: "Danseurs" },
     { id: "import", label: "Import" },
     { id: "liens", label: "Liens" },
     { id: "secretariat", label: "Secrétariat" },
@@ -67,8 +73,16 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen">
-      <Entete titre="Administration" sousTitre={`${categories.length} catégories · ${total} danseurs inscrits`}>
-        <nav className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <Entete
+        titre="Administration"
+        sousTitre={`${categories.length} catégories · ${total} danseurs inscrits`}
+        droite={
+          <Link href="/" className="mk-btn mk-btn-contour shrink-0 px-3 py-1.5 text-xs" aria-label="Accueil">
+            ⌂ Accueil
+          </Link>
+        }
+      >
+        <nav className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {onglets.map((o) => (
             <button
               key={o.id}
@@ -97,6 +111,7 @@ export default function AdminPage() {
             </div>
           </>
         )}
+        {onglet === "danseurs" && <GestionDanseurs categories={categories} onChange={charger} />}
         {onglet === "import" && <ImportExcel categories={categories} onImport={charger} />}
         {onglet === "liens" && <Liens categories={categories} />}
         {onglet === "secretariat" && <SecretariatGeneral categories={categories} />}

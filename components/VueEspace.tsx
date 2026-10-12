@@ -18,6 +18,7 @@ export default function VueEspace({ role, numero }: { role: RoleEspace; numero: 
 
   useEffect(() => {
     let annule = false;
+    let connecteUneFois = false;
 
     async function charger() {
       const { data: cats } = await supabase
@@ -62,7 +63,13 @@ export default function VueEspace({ role, numero }: { role: RoleEspace; numero: 
       .on("postgres_changes", { event: "*", schema: "public", table: "reglages" }, (payload) => {
         if (payload.new && "lignes" in payload.new) setReglages(payload.new as Reglages);
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Après une coupure réseau : on recharge pour rattraper ce qui a changé
+        if (status === "SUBSCRIBED") {
+          if (connecteUneFois) charger();
+          connecteUneFois = true;
+        }
+      });
 
     return () => {
       annule = true;
@@ -82,7 +89,9 @@ export default function VueEspace({ role, numero }: { role: RoleEspace; numero: 
           presents,
           aPointer: ds.length - pointes,
           pct: ds.length ? Math.round((pointes / ds.length) * 100) : 0,
-          passages: nbPassagesAuto(presents, reglages),
+          passages: c.demarree
+            ? Math.max(0, ...ds.map((d) => d.passage ?? 0))
+            : nbPassagesAuto(presents, reglages),
           finalistes: ds.filter(estFinaliste).length,
           or: ds.filter((d) => estFinaliste(d) && d.or_finale).length,
         };
@@ -104,7 +113,14 @@ export default function VueEspace({ role, numero }: { role: RoleEspace; numero: 
             className="mk-carte block space-y-3 transition hover:border-mk-rouge active:scale-[0.99]"
           >
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="mk-titre text-xl">{l.c.nom}</h2>
+              <h2 className="mk-titre text-xl">
+                {l.c.nom}
+                {l.c.demarree && (
+                  <span className="ml-2 rounded bg-mk-rouge/20 px-2 py-0.5 align-middle text-[10px] font-bold text-red-300">
+                    EN COURS
+                  </span>
+                )}
+              </h2>
               <span className="text-2xl text-mk-rouge">→</span>
             </div>
 

@@ -20,7 +20,7 @@ export default function GestionCategories({
     if (categories.some((c) => c.slug === slug)) return alert("Cette catégorie existe déjà.");
     const ordre = Math.max(0, ...categories.map((c) => c.ordre)) + 1;
     const { error } = await supabase.from("categories").insert({
-      nom: nom.trim(), slug, jury: 1, nb_passages: 1,
+      nom: nom.trim(), slug, jury: 1, nb_passages: 0, passages_rep: 0, passages_finale: 0,
       retenus_par_passage: [0], retenus_repechage: 0, ordre,
     });
     if (error) alert("Erreur : " + error.message);
@@ -67,6 +67,9 @@ function CarteCategorie({
         slug: normaliser(f.slug),
         jury: f.jury,
         ordre: f.ordre,
+        nb_passages: f.nb_passages,
+        passages_rep: f.passages_rep,
+        passages_finale: f.passages_finale,
       })
       .eq("id", f.id);
     setEnCours(false);
@@ -114,14 +117,14 @@ function CarteCategorie({
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
         <label className="space-y-1">
-          <span className="block text-xs font-semibold uppercase text-mk-gris">Jury</span>
+          <span className="block text-xs font-semibold uppercase text-mk-gris">Jury / Piste</span>
           <select
             value={f.jury}
             onChange={(e) => setF({ ...f, jury: Number(e.target.value) as 1 | 2 })}
             className={`${champ} w-full`}
           >
-            <option value={1}>Jury 1</option>
-            <option value={2}>Jury 2</option>
+            <option value={1}>Jury A · Piste A</option>
+            <option value={2}>Jury B · Piste B</option>
           </select>
         </label>
         <label className="space-y-1">
@@ -132,6 +135,38 @@ function CarteCategorie({
           <span className="block text-xs font-semibold uppercase text-mk-gris">Ordre d&apos;affichage</span>
           <input type="number" value={f.ordre} onChange={(e) => setF({ ...f, ordre: nombre(e.target.value) })} className={`${champ} w-full`} />
         </label>
+      </div>
+
+      {/* Nombre de passages fixé (playlist du DJ) : vide = automatique */}
+      <div className="space-y-2 rounded-md bg-mk-carte2 p-3 text-sm">
+        <p className="text-xs font-semibold uppercase text-mk-gris">
+          Nombre de passages <span className="normal-case">(vide = automatique)</span>
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            ["nb_passages", "1er tour"],
+            ["passages_rep", "Demi-finale"],
+            ["passages_finale", "Finale"],
+          ] as const).map(([cle, label]) => (
+            <label key={cle} className="space-y-1">
+              <span className="block text-xs text-mk-gris">{label}</span>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={f[cle] || ""}
+                placeholder="auto"
+                onChange={(e) => setF({ ...f, [cle]: Math.min(20, nombre(e.target.value)) })}
+                className={`${champ} w-full text-center`}
+              />
+            </label>
+          ))}
+        </div>
+        {cat.demarree && f.nb_passages !== cat.nb_passages && (
+          <p className="text-xs text-amber-300">
+            ⚠️ Catégorie déjà démarrée : le 1er tour reste figé. Annule le démarrage pour appliquer ce changement.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap justify-between gap-2 pt-1">

@@ -14,9 +14,43 @@ export default function GestionDanseurs({
   onChange: () => void;
 }) {
   const [slug, setSlug] = useState("");
+  const [enCours, setEnCours] = useState(false);
   useEffect(() => {
-    if (!slug && categories.length) setSlug(categories[0].slug);
+    // Catégorie choisie supprimée entre-temps → on revient à la première
+    if ((!slug || !categories.some((c) => c.slug === slug)) && categories.length) setSlug(categories[0].slug);
+    if (!categories.length) setSlug("");
   }, [categories, slug]);
+
+  const categorieChoisie = categories.find((c) => c.slug === slug);
+
+  // Double confirmation : on fait taper SUPPRIMER pour éviter un clic malheureux
+  const confirmer = (message: string) =>
+    confirm(message) && prompt('Pour confirmer, tape SUPPRIMER en majuscules :')?.trim() === "SUPPRIMER";
+
+  async function viderCategorie() {
+    if (!categorieChoisie) return;
+    if (!confirmer(`Supprimer TOUS les danseurs de « ${categorieChoisie.nom} » ?\n\nLa catégorie et ses réglages sont conservés.`)) return;
+    setEnCours(true);
+    await supabase.from("danseurs").delete().eq("categorie_id", categorieChoisie.id);
+    await supabase.from("categories").update({ demarree: false }).eq("id", categorieChoisie.id);
+    setEnCours(false);
+    onChange();
+  }
+
+  async function toutSupprimer(avecCategories: boolean) {
+    const msg = avecCategories
+      ? "Tout effacer : TOUS les danseurs ET TOUTES les catégories ?\n\nL'app repart de zéro (il faudra réimporter le fichier)."
+      : "Supprimer TOUS les danseurs de TOUTES les catégories ?\n\nLes catégories et leurs réglages sont conservés.";
+    if (!confirmer(msg)) return;
+    setEnCours(true);
+    const { error } = await supabase.from("danseurs").delete().not("id", "is", null);
+    const { error: e2 } = avecCategories
+      ? await supabase.from("categories").delete().not("id", "is", null)
+      : await supabase.from("categories").update({ demarree: false }).not("id", "is", null);
+    setEnCours(false);
+    alert(error || e2 ? "Erreur : " + (error ?? e2)!.message : "✅ Suppression effectuée");
+    onChange();
+  }
 
   return (
     <section className="space-y-3">
@@ -29,6 +63,25 @@ export default function GestionDanseurs({
         </select>
       </div>
       {slug && <ListeCategorie key={slug} slug={slug} categories={categories} onChange={onChange} />}
+
+      {/* Nettoyage après les tests */}
+      <div className="space-y-3 rounded-lg border border-mk-rouge/50 bg-mk-rouge/10 p-4">
+        <p className="mk-titre text-mk-rouge">Zone sensible · nettoyage</p>
+        <p className="text-sm text-mk-gris">
+          Pour repartir propre après les tests. Chaque suppression est définitive et demande de taper « SUPPRIMER ».
+        </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <button onClick={viderCategorie} disabled={enCours || !categorieChoisie} className="mk-btn mk-btn-sombre border border-mk-rouge/50">
+            Vider cette catégorie
+          </button>
+          <button onClick={() => toutSupprimer(false)} disabled={enCours} className="mk-btn mk-btn-rouge">
+            Supprimer tous les danseurs
+          </button>
+          <button onClick={() => toutSupprimer(true)} disabled={enCours} className="mk-btn mk-btn-rouge">
+            Tout effacer (danseurs + catégories)
+          </button>
+        </div>
+      </div>
     </section>
   );
 }
@@ -100,8 +153,7 @@ function ListeCategorie({
                 </div>
                 <span className="hidden text-xs font-semibold sm:inline">
                   {d.present === true && <span className="text-ok">Présent</span>}
-                  {d.present === false && <span className="text-mk-rouge">Absent</span>}
-                  {d.present === null && <span className="text-mk-gris">Non pointé</span>}
+                  {d.present !== true && <span className="text-mk-rouge">Absent</span>}
                 </span>
                 <button onClick={() => setEnEdition(d.id)} className="mk-btn mk-btn-sombre px-2 py-1 text-[11px]">
                   Modifier
@@ -150,7 +202,7 @@ function Ajout({
     }
     setMessage(
       `✅ ${fmt(num)} ${nom.trim().toUpperCase()} ajouté` +
-        (categorie.demarree ? " · catégorie démarrée : une fois pointé présent, il ira au repêchage" : "")
+        (categorie.demarree ? " · catégorie démarrée : une fois pointé présent, il ira en demi-finale" : "")
     );
     setDossard("");
     setNom("");
@@ -206,7 +258,7 @@ function Edition({ d, categories, onFin }: { d: Danseur; categories: Categorie[]
         prenom: f.prenom.trim(),
         categorie_id: f.categorie_id,
         ...(changeCategorie
-          ? { present: null, qualif_t1: false, qualif_rep: false, or_finale: false, passage: null }
+          ? { present: false, qualif_t1: false, qualif_rep: false, or_finale: false, passage: null }
           : {}),
       })
       .eq("id", d.id);

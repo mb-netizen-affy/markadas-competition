@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase, REGLAGES_DEFAUT, type Categorie, type Danseur, type Reglages } from "@/lib/supabase";
-import { estFinaliste, nbPassagesAuto } from "@/lib/competition";
+import { estFinaliste, nbPassages, lettre } from "@/lib/competition";
 import Entete, { Etat } from "@/components/Entete";
 import { LIBELLES, type RoleEspace } from "@/lib/espace";
 
@@ -82,16 +82,14 @@ export default function VueEspace({ role, numero }: { role: RoleEspace; numero: 
       categories.map((c) => {
         const ds = danseurs.filter((d) => d.categorie_id === c.id);
         const presents = ds.filter((d) => d.present === true).length;
-        const pointes = ds.filter((d) => d.present !== null).length;
         return {
           c,
           inscrits: ds.length,
           presents,
-          aPointer: ds.length - pointes,
-          pct: ds.length ? Math.round((pointes / ds.length) * 100) : 0,
+          pct: ds.length ? Math.round((presents / ds.length) * 100) : 0,
           passages: c.demarree
             ? Math.max(0, ...ds.map((d) => d.passage ?? 0))
-            : nbPassagesAuto(presents, reglages),
+            : nbPassages(presents, reglages, c.nb_passages),
           finalistes: ds.filter(estFinaliste).length,
           or: ds.filter((d) => estFinaliste(d) && d.or_finale).length,
         };
@@ -103,7 +101,7 @@ export default function VueEspace({ role, numero }: { role: RoleEspace; numero: 
 
   return (
     <main className="min-h-screen">
-      <Entete titre={`${LIBELLES[role]} ${numero}`} sousTitre={`${categories.length} catégories`} />
+      <Entete titre={`${LIBELLES[role]} ${lettre(numero)}`} sousTitre={`Piste ${lettre(numero)} · ${categories.length} catégories`} />
 
       <div className="mx-auto grid max-w-5xl gap-3 p-3 sm:grid-cols-2">
         {lignes.map((l) => (
@@ -126,19 +124,24 @@ export default function VueEspace({ role, numero }: { role: RoleEspace; numero: 
 
             <div className="space-y-1">
               <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-mk-gris">
-                <span>Pointage</span>
-                <span>{l.aPointer > 0 ? `${l.aPointer} à pointer` : "Terminé ✔"}</span>
+                <span>Présents</span>
+                <span>{l.presents} / {l.inscrits} inscrits</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-mk-carte2">
                 <div className="h-full bg-ok transition-all" style={{ width: `${l.pct}%` }} />
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-2 text-center">
+            {/* Les préparateurs ne voient pas les résultats (finalistes, Or) */}
+            <div className={`grid gap-2 text-center ${role === "preparateur" ? "grid-cols-2" : "grid-cols-4"}`}>
               <Chiffre valeur={l.presents} label="Présents" />
               <Chiffre valeur={l.passages} label="Passages" />
-              <Chiffre valeur={l.finalistes} label="Finalistes" />
-              <Chiffre valeur={l.or} label="Or" couleur="text-or" />
+              {role !== "preparateur" && (
+                <>
+                  <Chiffre valeur={l.finalistes} label="Finalistes" />
+                  <Chiffre valeur={l.or} label="Or" couleur="text-or" />
+                </>
+              )}
             </div>
           </Link>
         ))}

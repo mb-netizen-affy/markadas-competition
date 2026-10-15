@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase, type Categorie } from "@/lib/supabase";
 import Entete from "@/components/Entete";
+import { lettre } from "@/lib/competition";
 
 const ROLES = [
   { chemin: "pointeur", label: "Pointeur" },
@@ -38,7 +39,7 @@ export default function Accueil() {
           <div key={c.id} className="mk-carte space-y-3">
             <div className="flex items-baseline justify-between">
               <h3 className="mk-titre text-lg">{c.nom}</h3>
-              <span className="text-xs font-semibold uppercase text-mk-gris">Jury {c.jury}</span>
+              <span className="text-xs font-semibold uppercase text-mk-gris">Jury {lettre(c.jury)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {ROLES.map((r) => (

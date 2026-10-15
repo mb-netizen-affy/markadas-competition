@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase, REGLAGES_DEFAUT, type Categorie, type Danseur, type Reglages } from "./supabase";
-import { actifs, nbPassagesAuto, repartir } from "./competition";
+import { actifs, nbPassages, repartir } from "./competition";
 
 export function useCategorie(slug: string) {
   const [categorie, setCategorie] = useState<Categorie | null>(null);
@@ -101,7 +101,8 @@ export function useCategorie(slug: string) {
   // Démarre la catégorie : fige la composition des passages du 1er tour
   async function demarrer() {
     if (!categorie) return false;
-    const passages = repartir(actifs(danseurs), nbPassagesAuto(actifs(danseurs).length, reglages));
+    const presents = actifs(danseurs);
+    const passages = repartir(presents, nbPassages(presents.length, reglages, categorie.nb_passages));
     for (let i = 0; i < passages.length; i++) {
       const ids = passages[i].map((d) => d.id);
       if (!ids.length) continue;

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase, type Categorie, type Reglages } from "@/lib/supabase";
-import { maxParPassage, nbPassagesAuto, repartir } from "@/lib/competition";
+import { maxParPassage, nbPassages, repartir } from "@/lib/competition";
 
 // Réglage unique pour toute la compétition : combien de danseurs tiennent sur la piste.
 // Les passages de chaque catégorie en découlent automatiquement.
@@ -40,8 +40,8 @@ export default function ReglagesPassages({
     "w-20 rounded-md border border-mk-ligne bg-mk-noir px-2 py-1 text-center text-lg font-bold text-mk-texte focus:border-mk-rouge focus:outline-none";
 
   // Aperçu : "45 danseurs → 3 passages (15 · 15 · 15)"
-  const apercu = (n: number) => {
-    const nb = nbPassagesAuto(n, f);
+  const apercu = (n: number, fixe: number) => {
+    const nb = nbPassages(n, f, fixe);
     const tailles = repartir(Array.from({ length: n }), nb).map((p) => p.length);
     return (
       <>
@@ -55,7 +55,7 @@ export default function ReglagesPassages({
       <div>
         <h2 className="mk-titre text-lg">Passages automatiques</h2>
         <p className="text-sm text-mk-gris">
-          Les passages sont calculés tout seuls à partir des danseurs <b className="text-mk-texte">présents</b>,
+          Sauf si un nombre de passages est fixé dans la catégorie, les passages sont calculés tout seuls à partir des danseurs <b className="text-mk-texte">présents</b>,
           dans l&apos;ordre des dossards. Il suffit d&apos;indiquer la place sur la piste.
         </p>
       </div>
@@ -90,17 +90,30 @@ export default function ReglagesPassages({
           <tbody>
             {categories.map((c) => (
               <tr key={c.id} className="border-t border-mk-ligne">
-                <td className="p-2 font-bold uppercase">{c.nom}</td>
+                <td className="p-2 font-bold uppercase">
+                  {c.nom}
+                  {c.nb_passages > 0 && (
+                    <span className="ml-2 rounded bg-mk-rouge/20 px-1.5 py-0.5 text-[10px] text-red-300">
+                      {c.nb_passages} FIXÉS
+                    </span>
+                  )}
+                </td>
                 <td className="whitespace-nowrap p-2">
-                  <span className="text-mk-gris">{inscrits[c.id] ?? 0} →</span> {apercu(inscrits[c.id] ?? 0)}
+                  {(inscrits[c.id] ?? 0) > 0 ? (
+                    <>
+                      <span className="text-mk-gris">{inscrits[c.id]} →</span> {apercu(inscrits[c.id], c.nb_passages)}
+                    </>
+                  ) : (
+                    <span className="text-mk-gris">aucun inscrit</span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap p-2">
                   {(presents[c.id] ?? 0) > 0 ? (
                     <>
-                      <span className="text-mk-gris">{presents[c.id]} →</span> {apercu(presents[c.id])}
+                      <span className="text-mk-gris">{presents[c.id]} →</span> {apercu(presents[c.id], c.nb_passages)}
                     </>
                   ) : (
-                    <span className="text-mk-gris">pas encore pointé</span>
+                    <span className="text-mk-gris">aucun présent</span>
                   )}
                 </td>
               </tr>

@@ -10,7 +10,9 @@ export type Categorie = {
   nom: string;
   slug: string;
   jury: 1 | 2;
-  nb_passages: number;           // plus utilisé : les passages sont calculés automatiquement
+  nb_passages: number;           // passages du 1er tour fixés par l'admin (0 = automatique)
+  passages_rep: number;          // passages du repêchage (0 = automatique)
+  passages_finale: number;       // passages de la finale (0 = automatique)
   retenus_par_passage: number[]; // plus utilisé : le jury qualifie librement
   retenus_repechage: number;     // plus utilisé
   ordre: number;

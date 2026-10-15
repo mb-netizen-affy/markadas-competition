@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase, type Categorie, type Danseur } from "@/lib/supabase";
-import { fmt, medaille, estFinaliste } from "@/lib/competition";
+import { fmt, medaille, estFinaliste, lettre } from "@/lib/competition";
 
 // Supabase renvoie 1000 lignes maximum par requête : on charge par paquets
 async function chargerTousLesDanseurs(): Promise<Danseur[]> {
@@ -20,7 +20,7 @@ async function chargerTousLesDanseurs(): Promise<Danseur[]> {
 }
 
 type Stats = {
-  inscrits: number; presents: number; absents: number; aPointer: number;
+  inscrits: number; presents: number; absents: number;
   finalistes: number; or: number; argent: number; bronze: number;
 };
 
@@ -29,8 +29,7 @@ function calculer(ds: Danseur[]): Stats {
   return {
     inscrits: ds.length,
     presents: ds.filter((d) => d.present === true).length,
-    absents: ds.filter((d) => d.present === false).length,
-    aPointer: ds.filter((d) => d.present === null).length,
+    absents: ds.filter((d) => d.present !== true).length,
     finalistes: ds.filter(estFinaliste).length,
     or: m.filter((x) => x === "or").length,
     argent: m.filter((x) => x === "argent").length,
@@ -92,12 +91,12 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
 
     // Feuille 1 : synthèse
     const synthese: Record<string, string | number>[] = lignes.map(({ c, s }) => ({
-      Catégorie: c.nom, Jury: c.jury, Inscrits: s.inscrits, Présents: s.presents, Absents: s.absents,
-      "À pointer": s.aPointer, Finalistes: s.finalistes, Or: s.or, Argent: s.argent, Bronze: s.bronze,
+      Catégorie: c.nom, Jury: lettre(c.jury), Inscrits: s.inscrits, Présents: s.presents, Absents: s.absents,
+      Finalistes: s.finalistes, Or: s.or, Argent: s.argent, Bronze: s.bronze,
     }));
     synthese.push({
       Catégorie: "TOTAL", Jury: "", Inscrits: total.inscrits, Présents: total.presents,
-      Absents: total.absents, "À pointer": total.aPointer, Finalistes: total.finalistes,
+      Absents: total.absents, Finalistes: total.finalistes,
       Or: total.or, Argent: total.argent, Bronze: total.bronze,
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(synthese), "Synthèse");
@@ -110,9 +109,9 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
         const m = medaille(d);
         return {
           Dossard: fmt(d.dossard), Nom: d.nom, Prénom: d.prenom,
-          Présence: d.present === true ? "Présent" : d.present === false ? "Absent" : "",
-          "Qualifié direct finale": d.qualif_t1 ? "X" : "",
-          "Qualifié repêchage": d.qualif_rep ? "X" : "",
+          Présence: d.present === true ? "Présent" : "Absent",
+          "Qualifié finale (1er tour)": d.qualif_t1 ? "X" : "",
+          "Qualifié demi-finale": d.qualif_rep ? "X" : "",
           Bronze: m === "bronze" ? "X" : "", Argent: m === "argent" ? "X" : "", Or: m === "or" ? "X" : "",
         };
       });
@@ -128,7 +127,7 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
   if (chargement) return <p className="p-4 text-mk-gris">Chargement…</p>;
   if (erreur) return <p className="p-4 text-mk-rouge">Erreur : {erreur}</p>;
 
-  const pct = (s: Stats) => (s.inscrits ? Math.round(((s.presents + s.absents) / s.inscrits) * 100) : 0);
+  const pct = (s: Stats) => (s.inscrits ? Math.round((s.presents / s.inscrits) * 100) : 0);
 
   return (
     <section className="space-y-3">
@@ -142,13 +141,12 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
           <Tuile label="Inscrits" valeur={total.inscrits} />
           <Tuile label="Présents" valeur={total.presents} couleur="text-ok" />
           <Tuile label="Absents" valeur={total.absents} couleur="text-mk-rouge" />
-          <Tuile label="À pointer" valeur={total.aPointer} />
           <Tuile label="Finalistes" valeur={total.finalistes} />
           <Tuile label="Or" valeur={total.or} couleur="text-or" />
           <Tuile label="Argent" valeur={total.argent} couleur="text-argent" />
           <Tuile label="Bronze" valeur={total.bronze} couleur="text-bronze" />
         </div>
-        <Barre pct={pct(total)} label="Pointage global" />
+        <Barre pct={pct(total)} label="Taux de présence" />
       </div>
 
       {/* Détail par catégorie */}
@@ -161,7 +159,6 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
               <th className="p-3 text-center">Inscrits</th>
               <th className="p-3 text-center">Présents</th>
               <th className="p-3 text-center">Absents</th>
-              <th className="p-3 text-center">À pointer</th>
               <th className="p-3 text-center">Finalistes</th>
               <th className="p-3 text-center text-or">Or</th>
               <th className="p-3 text-center text-argent">Argent</th>
@@ -178,11 +175,10 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
                     <div className="h-full bg-ok" style={{ width: `${pct(s)}%` }} />
                   </div>
                 </td>
-                <td className="p-3 text-center text-mk-gris">{c.jury}</td>
+                <td className="p-3 text-center text-mk-gris">{lettre(c.jury)}</td>
                 <td className="p-3 text-center font-semibold">{s.inscrits}</td>
                 <td className="p-3 text-center text-ok">{s.presents}</td>
                 <td className="p-3 text-center text-mk-rouge">{s.absents}</td>
-                <td className="p-3 text-center">{s.aPointer || <span className="text-ok">✔</span>}</td>
                 <td className="p-3 text-center">{s.finalistes}</td>
                 <td className="p-3 text-center text-or">{s.or}</td>
                 <td className="p-3 text-center text-argent">{s.argent}</td>
@@ -200,7 +196,6 @@ export default function SecretariatGeneral({ categories }: { categories: Categor
               <td className="p-3 text-center">{total.inscrits}</td>
               <td className="p-3 text-center text-ok">{total.presents}</td>
               <td className="p-3 text-center text-mk-rouge">{total.absents}</td>
-              <td className="p-3 text-center">{total.aPointer}</td>
               <td className="p-3 text-center">{total.finalistes}</td>
               <td className="p-3 text-center text-or">{total.or}</td>
               <td className="p-3 text-center text-argent">{total.argent}</td>

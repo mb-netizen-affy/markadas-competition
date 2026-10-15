@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Categorie } from "@/lib/supabase";
+import { lettre } from "@/lib/competition";
 
 const ROLES = [
   { chemin: "pointeur", label: "Pointeur" },
@@ -49,9 +50,9 @@ export default function Liens({ categories }: { categories: Categorie[] }) {
         <div className="grid gap-3 sm:grid-cols-2">
           {[1, 2].map((jury) => (
             <div key={jury} className="space-y-2">
-              <p className="mk-titre text-mk-rouge">Jury {jury}</p>
+              <p className="mk-titre text-mk-rouge">Jury {lettre(jury)} · Piste {lettre(jury)}</p>
               {ESPACES.map((r) => {
-                const url = `${origine}/espace/${r.chemin}/${jury}`;
+                const url = `${origine}/espace/${r.chemin}/${lettre(jury).toLowerCase()}`;
                 return (
                   <div key={r.chemin} className="flex items-center gap-2 rounded-md bg-mk-carte2 px-3 py-2 text-sm">
                     <span className="w-24 shrink-0 text-xs font-bold uppercase text-mk-gris">{r.label}</span>
@@ -72,7 +73,7 @@ export default function Liens({ categories }: { categories: Categorie[] }) {
         const cats = categories.filter((c) => c.jury === jury);
         return (
           <div key={jury} className="mk-carte space-y-3">
-            <h2 className="mk-titre text-lg text-mk-rouge">Jury {jury}</h2>
+            <h2 className="mk-titre text-lg text-mk-rouge">Jury {lettre(jury)} · Piste {lettre(jury)}</h2>
             {cats.length === 0 && <p className="text-sm text-mk-gris">Aucune catégorie</p>}
             {cats.map((c) => (
               <div key={c.id} className="space-y-1">

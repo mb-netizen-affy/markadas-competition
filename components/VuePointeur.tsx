@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useCategorie } from "@/lib/useCategorie";
-import { fmt } from "@/lib/competition";
+import { fmt, lettre } from "@/lib/competition";
 import type { Danseur } from "@/lib/supabase";
 import Entete, { Etat } from "@/components/Entete";
 
@@ -11,9 +11,9 @@ export default function VuePointeur({ slug }: { slug: string }) {
   const [recherche, setRecherche] = useState("");
 
   const stats = useMemo(() => ({
+    // Tout le monde est absent par défaut : on ne compte que les présents
     presents: danseurs.filter((d) => d.present === true).length,
-    absents: danseurs.filter((d) => d.present === false).length,
-    aPointer: danseurs.filter((d) => d.present === null).length,
+    absents: danseurs.filter((d) => d.present !== true).length,
   }), [danseurs]);
 
   const liste = useMemo(() => {
@@ -29,16 +29,17 @@ export default function VuePointeur({ slug }: { slug: string }) {
   if (chargement) return <Etat texte="Chargement…" />;
   if (erreur || !categorie) return <Etat texte={erreur ?? "Erreur"} erreur />;
 
-  // Clic sur Présent/Absent ; recliquer sur le même bouton annule le pointage
-  const pointer = (d: Danseur, v: boolean) => modifier(d, { present: d.present === v ? null : v });
+  // Absent par défaut ; un clic sur Présent / Absent change l'état
+  const pointer = (d: Danseur, v: boolean) => {
+    if ((d.present === true) !== v) modifier(d, { present: v });
+  };
 
   return (
     <main className="min-h-screen">
-      <Entete titre={categorie.nom} sousTitre={`Pointage · Jury ${categorie.jury} · ${danseurs.length} attendus`}>
-        <div className="grid grid-cols-3 gap-2 text-center">
+      <Entete titre={categorie.nom} sousTitre={`Pointage · Piste ${lettre(categorie.jury)} · ${danseurs.length} inscrits`}>
+        <div className="grid grid-cols-2 gap-2 text-center">
           <Stat valeur={stats.presents} label="Présents" couleur="text-ok" />
           <Stat valeur={stats.absents} label="Absents" couleur="text-mk-rouge" />
-          <Stat valeur={stats.aPointer} label="À pointer" couleur="text-white" />
         </div>
         <input
           type="search"
@@ -54,7 +55,7 @@ export default function VuePointeur({ slug }: { slug: string }) {
           <li
             key={d.id}
             className={`flex items-center gap-3 rounded-lg border-l-4 bg-mk-carte p-3 ${
-              d.present === true ? "border-ok" : d.present === false ? "border-mk-rouge opacity-60" : "border-mk-ligne"
+              d.present === true ? "border-ok" : "border-mk-ligne"
             }`}
           >
             <span className="w-12 text-center text-2xl font-extrabold tabular-nums">{fmt(d.dossard)}</span>
@@ -70,7 +71,7 @@ export default function VuePointeur({ slug }: { slug: string }) {
             </button>
             <button
               onClick={() => pointer(d, false)}
-              className={`mk-btn px-3 py-3 text-xs ${d.present === false ? "mk-btn-rouge" : "mk-btn-sombre"}`}
+              className={`mk-btn px-3 py-3 text-xs ${d.present !== true ? "mk-btn-rouge" : "mk-btn-sombre"}`}
             >
               Absent
             </button>

@@ -1,78 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase, type Categorie } from "@/lib/supabase";
 import { normaliser } from "@/lib/texte";
+import { lireClasseur, type CategorieImport, type Piste } from "@/lib/importFichier";
 
-type Ligne = { categorie: string; dossard: number; nom: string; prenom: string };
-
-// Noms de colonnes acceptés (sans accents, majuscules ni espaces)
-const COLONNES: Record<keyof Ligne, string[]> = {
-  categorie: ["categorie", "categ", "danse", "discipline"],
-  dossard: ["dossard", "numero", "num", "no", "n"],
-  nom: ["nom", "nomdefamille"],
-  prenom: ["prenom"],
-};
-
-async function lireFichier(fichier: File) {
-  const wb = XLSX.read(await fichier.arrayBuffer());
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-  if (rows.length === 0) throw new Error("Le fichier est vide.");
-
-  const entetes = Object.keys(rows[0]);
-  const col = Object.fromEntries(
-    (Object.keys(COLONNES) as (keyof Ligne)[]).map((k) => [
-      k,
-      entetes.find((e) => COLONNES[k].includes(normaliser(e))),
-    ])
-  ) as Record<keyof Ligne, string | undefined>;
-
-  const manquantes = Object.entries(col).filter(([, v]) => !v).map(([k]) => k);
-  if (manquantes.length) {
-    throw new Error(
-      `Colonne(s) introuvable(s) : ${manquantes.join(", ")}. ` +
-      `La 1re ligne du fichier doit contenir : Catégorie, Dossard, Nom, Prénom.`
-    );
-  }
-
-  const lignes: Ligne[] = [];
-  const erreurs: string[] = [];
-  rows.forEach((r, i) => {
-    const num = i + 2; // +2 : ligne d'en-tête + numérotation Excel
-    const categorie = String(r[col.categorie!]).trim();
-    const dossardTxt = String(r[col.dossard!]).trim();
-    const dossard = parseInt(dossardTxt, 10);
-    const nom = String(r[col.nom!]).trim();
-    const prenom = String(r[col.prenom!]).trim();
-
-    if (!categorie && !dossardTxt && !nom && !prenom) return; // ligne vide ignorée
-    if (!categorie) erreurs.push(`Ligne ${num} : catégorie manquante`);
-    else if (isNaN(dossard)) erreurs.push(`Ligne ${num} : dossard invalide (« ${dossardTxt} »)`);
-    else if (!nom) erreurs.push(`Ligne ${num} : nom manquant`);
-    else lignes.push({ categorie, dossard, nom, prenom });
-  });
-
-  const vus = new Set<string>();
-  for (const l of lignes) {
-    const cle = `${normaliser(l.categorie)}|${l.dossard}`;
-    if (vus.has(cle)) erreurs.push(`Dossard ${l.dossard} en double dans « ${l.categorie} »`);
-    vus.add(cle);
-  }
-
-  return { lignes, erreurs };
-}
-
+// Fichier modèle au format de l'école : un onglet par catégorie
 function telechargerModele() {
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["Catégorie", "Dossard", "Nom", "Prénom"],
-    ["Hip Hop", 1, "GENSEL", "Yoan"],
-    ["Hip Hop", 2, "DIAZ", "Cynthia"],
-    ["Ragga", 1, "LAGOUTTE", "Karim"],
-  ]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Inscriptions");
+  const onglet = (titre: string, debut: number, danseurs: [string, string, string][]) =>
+    XLSX.utils.aoa_to_sheet([
+      [titre],
+      ["Club", "NOM", "PRENOM", "N°", "Présent", "Bronze", "O/A", "ARG", "OR"],
+      ...danseurs.map(([club, nom, prenom], i) => [club, nom, prenom, debut + i]),
+    ]);
+  XLSX.utils.book_append_sheet(
+    wb,
+    onglet("HIP-HOP DEB-INTER", 600, [["BRON", "DUPONT", "Léa"], ["", "MARTIN", "Inès"], ["SP", "BERNARD", "Noah"]]),
+    "A- HIP-HOP DEBINT"
+  );
+  XLSX.utils.book_append_sheet(
+    wb,
+    onglet("RAGGA INTER-AVANCE", 1500, [["MZ", "PETIT", "Jade"], ["", "ROUX", "Lina"]]),
+    "B- RAGGA INTAV"
+  );
   XLSX.writeFile(wb, "modele-inscriptions-markadas.xlsx");
 }
 
@@ -84,26 +36,17 @@ export default function ImportExcel({
   onImport: () => void;
 }) {
   const [nomFichier, setNomFichier] = useState("");
-  const [lignes, setLignes] = useState<Ligne[]>([]);
+  const [lues, setLues] = useState<CategorieImport[]>([]);
   const [erreurs, setErreurs] = useState<string[]>([]);
+  const [infos, setInfos] = useState<string[]>([]);
+  const [supprimerAbsentes, setSupprimerAbsentes] = useState(true);
   const [message, setMessage] = useState("");
   const [enCours, setEnCours] = useState(false);
 
-  const trouverCategorie = (nom: string) =>
-    categories.find((c) => normaliser(c.nom) === normaliser(nom) || c.slug === normaliser(nom));
-
-  // Aperçu : nombre de danseurs par catégorie du fichier
-  const apercu = useMemo(() => {
-    const groupes = new Map<string, { nom: string; nb: number }>();
-    for (const l of lignes) {
-      const cle = normaliser(l.categorie);
-      const g = groupes.get(cle) ?? { nom: l.categorie, nb: 0 };
-      g.nb++;
-      groupes.set(cle, g);
-    }
-    return [...groupes.values()].map((g) => ({ ...g, existe: !!trouverCategorie(g.nom) }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lignes, categories]);
+  const existante = (nom: string) => categories.find((c) => normaliser(c.nom) === normaliser(nom));
+  const total = lues.reduce((a, c) => a + c.danseurs.length, 0);
+  const pisteManquante = lues.some((c) => !c.piste);
+  const absentes = categories.filter((c) => !lues.some((l) => normaliser(l.nom) === normaliser(c.nom)));
 
   async function choisirFichier(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -112,71 +55,101 @@ export default function ImportExcel({
     setMessage("");
     setNomFichier(f.name);
     try {
-      const res = await lireFichier(f);
-      setLignes(res.lignes);
+      const res = lireClasseur(XLSX.read(await f.arrayBuffer()));
+      // Catégorie déjà connue sans piste dans le fichier : on garde sa piste actuelle
+      for (const c of res.categories) {
+        const ex = categories.find((x) => normaliser(x.nom) === normaliser(c.nom));
+        if (!c.piste && ex && c.onglet && !/^\s*[A-Za-z]\s*[-–—_:]/.test(c.onglet)) c.piste = ex.jury === 2 ? "B" : "A";
+      }
+      setLues(res.categories);
       setErreurs(res.erreurs);
+      setInfos(res.infos);
     } catch (err) {
-      setLignes([]);
-      setErreurs([(err as Error).message]);
+      setLues([]);
+      setInfos([]);
+      setErreurs(["Fichier illisible : " + (err as Error).message]);
     }
   }
 
+  function changerPiste(i: number, piste: Piste) {
+    setLues((prev) => prev.map((c, j) => (j === i ? { ...c, piste } : c)));
+  }
+
   async function importer() {
+    if (pisteManquante) return alert("Choisis la piste (A ou B) de chaque catégorie avant d'importer.");
     if (!confirm(
-      "Remplacer TOUTE la liste des danseurs par ce fichier ?\n\n" +
-      "Les présences et les sélections du jury actuelles seront effacées."
+      `Importer ${total} danseurs dans ${lues.length} catégories ?\n\n` +
+      "La liste actuelle des danseurs sera remplacée : présences, passages et sélections du jury seront effacés." +
+      (supprimerAbsentes && absentes.length ? `\n\n${absentes.length} catégorie(s) absente(s) du fichier seront supprimées.` : "")
     )) return;
 
     setEnCours(true);
     setMessage("");
     try {
-      // 1. Créer les catégories qui n'existent pas encore
+      // 1. Catégories : mise à jour (piste, ordre) ou création, dans l'ordre des onglets
       const ids = new Map<string, string>();
-      for (const c of categories) {
-        ids.set(normaliser(c.nom), c.id);
-        ids.set(c.slug, c.id);
-      }
       const slugsPris = new Set(categories.map((c) => c.slug));
-      const aCreer = apercu.filter((g) => !g.existe);
-      if (aCreer.length) {
-        const ordreMax = Math.max(0, ...categories.map((c) => c.ordre));
-        const nouvelles = aCreer.map((g, i) => {
-          let slug = normaliser(g.nom) || "categorie";
-          let n = 2;
-          while (slugsPris.has(slug)) slug = `${normaliser(g.nom)}${n++}`;
+      let creees = 0;
+      for (let i = 0; i < lues.length; i++) {
+        const l = lues[i];
+        const jury = l.piste === "B" ? 2 : 1;
+        const ex = existante(l.nom);
+        if (ex) {
+          const { error } = await supabase.from("categories").update({ jury, ordre: i + 1 }).eq("id", ex.id);
+          if (error) throw error;
+          ids.set(normaliser(l.nom), ex.id);
+        } else {
+          let slug = normaliser(l.nom) || "categorie";
+          for (let n = 2; slugsPris.has(slug); n++) slug = `${normaliser(l.nom)}${n}`;
           slugsPris.add(slug);
-          return {
-            nom: g.nom, slug, jury: 1, nb_passages: 1,
-            retenus_par_passage: [0], retenus_repechage: 0, ordre: ordreMax + i + 1,
-          };
-        });
-        const { data, error } = await supabase.from("categories").insert(nouvelles).select();
-        if (error) throw error;
-        for (const c of data ?? []) ids.set(normaliser(c.nom), c.id);
+          const { data, error } = await supabase
+            .from("categories")
+            .insert({
+              nom: l.nom, slug, jury, ordre: i + 1,
+              nb_passages: 0, passages_rep: 0, passages_finale: 0,
+              retenus_par_passage: [0], retenus_repechage: 0,
+            })
+            .select()
+            .single();
+          if (error) throw error;
+          ids.set(normaliser(l.nom), data.id);
+          creees++;
+        }
       }
 
-      // 2. Vider la liste actuelle des danseurs (et remettre les catégories "non démarrées")
+      // 2. Catégories absentes du fichier (ex. catégories de test)
+      if (supprimerAbsentes && absentes.length) {
+        const { error } = await supabase.from("categories").delete().in("id", absentes.map((c) => c.id));
+        if (error) throw error;
+      }
+
+      // 3. On repart d'une liste vide
       await supabase.from("categories").update({ demarree: false }).not("id", "is", null);
       const { error: errSuppr } = await supabase.from("danseurs").delete().not("id", "is", null);
       if (errSuppr) throw errSuppr;
 
-      // 3. Insérer les nouveaux danseurs (par paquets de 500)
-      const rows = lignes.map((l) => ({
-        categorie_id: ids.get(normaliser(l.categorie))!,
-        dossard: l.dossard,
-        nom: l.nom,
-        prenom: l.prenom,
-      }));
+      // 4. Danseurs (par paquets de 500), absents par défaut
+      const rows = lues.flatMap((l) =>
+        l.danseurs.map((d) => ({
+          categorie_id: ids.get(normaliser(l.nom))!,
+          dossard: d.dossard,
+          nom: d.nom,
+          prenom: d.prenom,
+          present: false,
+        }))
+      );
       for (let i = 0; i < rows.length; i += 500) {
         const { error } = await supabase.from("danseurs").insert(rows.slice(i, i + 500));
         if (error) throw error;
       }
 
       setMessage(
-        `✅ ${rows.length} danseurs importés` +
-        (aCreer.length ? ` · ${aCreer.length} catégorie(s) créée(s), pense à régler leurs passages` : "")
+        `✅ ${rows.length} danseurs importés dans ${lues.length} catégories` +
+        (creees ? ` · ${creees} catégorie(s) créée(s)` : "") +
+        (supprimerAbsentes && absentes.length ? ` · ${absentes.length} supprimée(s)` : "")
       );
-      setLignes([]);
+      setLues([]);
+      setInfos([]);
       setNomFichier("");
       onImport();
     } catch (err) {
@@ -194,54 +167,26 @@ export default function ImportExcel({
           Télécharger un fichier modèle
         </button>
       </div>
-      <p className="text-sm text-mk-gris">
-        Fichier Excel avec, sur la 1re ligne, les colonnes <b className="text-mk-texte">Catégorie</b>,{" "}
-        <b className="text-mk-texte">Dossard</b>, <b className="text-mk-texte">Nom</b> et{" "}
-        <b className="text-mk-texte">Prénom</b>. L&apos;import remplace toute la liste actuelle.
-      </p>
 
-      {/* Exemple du tableau attendu, présenté comme dans Excel */}
-      <div className="space-y-2">
-        <p className="text-xs font-bold uppercase tracking-wider text-mk-gris">Exemple de fichier attendu</p>
-        <div className="overflow-x-auto rounded-md border border-mk-ligne">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-mk-noir text-xs text-mk-gris">
-                <th className="w-8 border-r border-mk-ligne p-1"></th>
-                {["A", "B", "C", "D"].map((l) => (
-                  <th key={l} className="border-r border-mk-ligne p-1 font-semibold last:border-r-0">{l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                ["Catégorie", "Dossard", "Nom", "Prénom"],
-                ["Hip Hop", "1", "GENSEL", "Yoan"],
-                ["Hip Hop", "2", "DIAZ", "Cynthia"],
-                ["Hip Hop", "3", "LAGOUTTE", "Karim"],
-                ["Ragga", "1", "MARTIN", "Léa"],
-                ["Girly", "1", "BERNARD", "Inès"],
-              ].map((ligne, i) => (
-                <tr key={i} className={`border-t border-mk-ligne ${i === 0 ? "bg-mk-carte2 font-bold" : ""}`}>
-                  <td className="border-r border-mk-ligne bg-mk-noir p-1 text-center text-xs text-mk-gris">{i + 1}</td>
-                  {ligne.map((cellule, j) => (
-                    <td key={j} className="border-r border-mk-ligne px-2 py-1 last:border-r-0">{cellule}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <ul className="list-disc space-y-0.5 pl-5 text-xs text-mk-gris">
-          <li>Une ligne = un danseur, à partir de la ligne 2.</li>
-          <li>Les dossards peuvent repartir à 1 dans chaque catégorie, mais pas de doublon dans une même catégorie.</li>
-          <li>Le nom de la catégorie doit être identique pour tous ses danseurs (majuscules et accents sont ignorés).</li>
-          <li>Seule la 1re feuille du fichier est lue ; l&apos;ordre des colonnes n&apos;a pas d&apos;importance.</li>
+      <div className="space-y-2 text-sm text-mk-gris">
+        <p>
+          Importe directement le <b className="text-mk-texte">fichier Excel de l&apos;école</b>, tel quel :{" "}
+          <b className="text-mk-texte">un onglet par catégorie</b>.
+        </p>
+        <ul className="list-disc space-y-0.5 pl-5 text-xs">
+          <li>
+            Le nom de l&apos;onglet commence par la piste : <b className="text-mk-texte">A -</b> ou{" "}
+            <b className="text-mk-texte">B -</b> (ex. « A- HIP-HOP DEBINT »). Pour les autres (ex. « U- »), tu choisis la piste ci-dessous.
+          </li>
+          <li>Le titre en haut de l&apos;onglet devient le nom de la catégorie.</li>
+          <li>Colonnes lues : <b className="text-mk-texte">NOM</b>, <b className="text-mk-texte">PRENOM</b> et <b className="text-mk-texte">N°</b> (les autres sont ignorées).</li>
+          <li>Les numéros réservés sans nom sont ignorés ; les onglets sans colonne N° (ex. DÉMOS) aussi.</li>
+          <li>L&apos;import <b className="text-mk-texte">remplace toute la liste</b> actuelle ; tous les danseurs arrivent « absents ».</li>
         </ul>
       </div>
 
       <label className="mk-btn mk-btn-rouge cursor-pointer">
-        Choisir un fichier Excel
+        Choisir le fichier Excel
         <input type="file" accept=".xlsx,.xls,.csv" onChange={choisirFichier} className="hidden" />
       </label>
       {nomFichier && <span className="ml-3 text-sm text-mk-gris">{nomFichier}</span>}
@@ -249,35 +194,94 @@ export default function ImportExcel({
       {erreurs.length > 0 && (
         <div className="space-y-1 rounded-md border border-mk-rouge/50 bg-mk-rouge/10 p-3 text-sm text-red-300">
           <p className="font-semibold">À corriger dans le fichier avant l&apos;import :</p>
-          <ul className="list-disc pl-5 max-h-48 overflow-y-auto">
+          <ul className="max-h-48 list-disc overflow-y-auto pl-5">
             {erreurs.map((e, i) => <li key={i}>{e}</li>)}
           </ul>
         </div>
       )}
 
-      {lignes.length > 0 && erreurs.length === 0 && (
+      {infos.length > 0 && (
+        <ul className="list-disc space-y-0.5 rounded-md bg-mk-carte2 p-3 pl-7 text-xs text-mk-gris">
+          {infos.map((e, i) => <li key={i}>{e}</li>)}
+        </ul>
+      )}
+
+      {lues.length > 0 && erreurs.length === 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-semibold">{lignes.length} danseurs trouvés :</p>
-          <ul className="divide-y divide-mk-ligne rounded-md border border-mk-ligne text-sm">
-            {apercu.map((g) => (
-              <li key={g.nom} className="flex justify-between px-3 py-2">
-                <span>
-                  {g.nom}
-                  {!g.existe && (
-                    <span className="ml-2 rounded bg-mk-rouge/20 px-2 py-0.5 text-xs font-semibold text-red-300">
-                      nouvelle catégorie
-                    </span>
-                  )}
-                </span>
-                <span className="font-semibold">{g.nb}</span>
-              </li>
-            ))}
-          </ul>
-          <button
-            onClick={importer}
-            disabled={enCours}
-            className="mk-btn bg-ok text-white"
-          >
+          <p className="text-sm font-semibold">
+            {total} danseurs dans {lues.length} catégories :
+          </p>
+          <div className="overflow-x-auto rounded-md border border-mk-ligne">
+            <table className="w-full text-sm">
+              <thead className="bg-mk-carte2 text-left text-xs uppercase tracking-wider text-mk-gris">
+                <tr>
+                  <th className="p-2">Piste</th>
+                  <th className="p-2">Catégorie</th>
+                  <th className="p-2">Onglet</th>
+                  <th className="p-2 text-center">Danseurs</th>
+                  <th className="p-2">Dossards</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lues.map((c, i) => {
+                  const ds = c.danseurs.map((d) => d.dossard);
+                  return (
+                    <tr key={i} className="border-t border-mk-ligne">
+                      <td className="p-2">
+                        <select
+                          value={c.piste}
+                          onChange={(e) => changerPiste(i, e.target.value as Piste)}
+                          className={`rounded-md border bg-mk-noir px-2 py-1 font-bold ${
+                            c.piste ? "border-mk-ligne" : "border-amber-500 text-amber-300"
+                          }`}
+                        >
+                          <option value="">À choisir</option>
+                          <option value="A">A</option>
+                          <option value="B">B</option>
+                        </select>
+                      </td>
+                      <td className="p-2 font-bold uppercase">
+                        {c.nom}
+                        {!existante(c.nom) && (
+                          <span className="ml-2 rounded bg-mk-rouge/20 px-1.5 py-0.5 text-[10px] font-semibold normal-case text-red-300">
+                            nouvelle
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2 text-xs text-mk-gris">{c.onglet}</td>
+                      <td className="p-2 text-center font-semibold">{c.danseurs.length}</td>
+                      <td className="whitespace-nowrap p-2 text-xs text-mk-gris">
+                        {Math.min(...ds)} → {Math.max(...ds)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {absentes.length > 0 && (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={supprimerAbsentes}
+                onChange={(e) => setSupprimerAbsentes(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                Supprimer les {absentes.length} catégorie(s) qui ne sont pas dans le fichier
+                <span className="block text-xs text-mk-gris">{absentes.map((c) => c.nom).join(", ")}</span>
+              </span>
+            </label>
+          )}
+
+          {pisteManquante && (
+            <p className="text-sm font-semibold text-amber-300">
+              ⚠️ Choisis la piste (A ou B) des catégories marquées « À choisir ».
+            </p>
+          )}
+
+          <button onClick={importer} disabled={enCours || pisteManquante} className="mk-btn bg-ok text-white">
             {enCours ? "Import en cours…" : "Importer et remplacer la liste"}
           </button>
         </div>

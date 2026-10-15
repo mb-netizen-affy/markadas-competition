@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useMemo } from "react";
 import * as XLSX from "xlsx";
 import { useCategorie } from "@/lib/useCategorie";
-import { fmt, medaille } from "@/lib/competition";
+import { fmt, medaille, lettre, actifs } from "@/lib/competition";
+import { imprimerResultats } from "@/lib/impression";
 import Entete, { Etat } from "@/components/Entete";
 
 export default function VueSecretariat({ slug }: { slug: string }) {
@@ -17,7 +18,7 @@ export default function VueSecretariat({ slug }: { slug: string }) {
 
   const totaux = useMemo(() => ({
     presents: danseurs.filter((d) => d.present === true).length,
-    absents: danseurs.filter((d) => d.present === false).length,
+    absents: danseurs.filter((d) => d.present !== true).length,
     or: lignes.filter((l) => l.m === "or").length,
     argent: lignes.filter((l) => l.m === "argent").length,
     bronze: lignes.filter((l) => l.m === "bronze").length,
@@ -31,9 +32,9 @@ export default function VueSecretariat({ slug }: { slug: string }) {
       Dossard: fmt(d.dossard),
       Nom: d.nom,
       Prénom: d.prenom,
-      Présence: d.present === true ? "Présent" : d.present === false ? "Absent" : "",
-      "Qualifié direct finale": d.qualif_t1 ? "X" : "",
-      "Qualifié repêchage": d.qualif_rep ? "X" : "",
+      Présence: d.present === true ? "Présent" : "Absent",
+      "Qualifié finale (1er tour)": d.qualif_t1 ? "X" : "",
+      "Qualifié demi-finale": d.qualif_rep ? "X" : "",
       Bronze: m === "bronze" ? "X" : "",
       Argent: m === "argent" ? "X" : "",
       Or: m === "or" ? "X" : "",
@@ -44,6 +45,19 @@ export default function VueSecretariat({ slug }: { slug: string }) {
     XLSX.writeFile(wb, `markadas-${categorie!.slug}.xlsx`);
   }
 
+  // Impression des résultats (l'Or et l'Argent sont annoncés sur la piste, pas imprimés)
+  function imprimerPremierTour() {
+    const presents = actifs(danseurs);
+    if (!categorie!.demarree && !confirm("La catégorie n'a pas encore démarré. Imprimer quand même ?")) return;
+    if (!presents.some((d) => d.qualif_t1) && !confirm("Aucun danseur n'est encore sélectionné pour la finale. Imprimer quand même ?")) return;
+    imprimerResultats("premier-tour", categorie!, danseurs);
+  }
+  function imprimerDemiFinale() {
+    const presents = actifs(danseurs);
+    if (!presents.some((d) => d.qualif_rep) && !confirm("Aucun danseur n'est encore qualifié en demi-finale. Imprimer quand même ?")) return;
+    imprimerResultats("demi-finale", categorie!, danseurs);
+  }
+
   const coche = (v: boolean) => (v ? <span className="text-lg font-bold text-mk-rouge">✔</span> : null);
   const pastille = (couleur: string, v: boolean) =>
     v ? <span className={`inline-block h-4 w-4 rounded-full ${couleur}`} /> : null;
@@ -52,10 +66,10 @@ export default function VueSecretariat({ slug }: { slug: string }) {
     <main className="min-h-screen">
       <Entete
         titre={categorie.nom}
-        sousTitre={`Secrétariat · Jury ${categorie.jury}`}
+        sousTitre={`Secrétariat · Jury ${lettre(categorie.jury)}`}
         droite={
           <div className="flex shrink-0 gap-2">
-            <Link href={`/espace/secretariat/${categorie.jury}`} className="mk-btn mk-btn-contour px-3 py-1.5 text-xs">
+            <Link href={`/espace/secretariat/${lettre(categorie.jury).toLowerCase()}`} className="mk-btn mk-btn-contour px-3 py-1.5 text-xs">
               ☰ Catégories
             </Link>
             <button onClick={exporter} className="mk-btn mk-btn-rouge text-xs">Export Excel</button>
@@ -70,6 +84,16 @@ export default function VueSecretariat({ slug }: { slug: string }) {
           <Puce label="Argent" valeur={totaux.argent} couleur="text-argent" />
           <Puce label="Bronze" valeur={totaux.bronze} couleur="text-bronze" />
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={imprimerPremierTour} className="mk-btn mk-btn-sombre border border-mk-ligne py-3">
+            🖨 Résultats 1er tour
+            <span className="ml-1 hidden font-normal normal-case text-mk-gris sm:inline">(finale / demi-finale)</span>
+          </button>
+          <button onClick={imprimerDemiFinale} className="mk-btn mk-btn-sombre border border-mk-ligne py-3">
+            🖨 Résultats demi-finale
+            <span className="ml-1 hidden font-normal normal-case text-mk-gris sm:inline">(finale / bronze)</span>
+          </button>
+        </div>
       </Entete>
 
       <div className="mx-auto max-w-5xl p-3">
@@ -82,7 +106,7 @@ export default function VueSecretariat({ slug }: { slug: string }) {
                 <th className="p-3">Prénom</th>
                 <th className="p-3">Présence</th>
                 <th className="p-3 text-center">Qualifié direct</th>
-                <th className="p-3 text-center">Repêché</th>
+                <th className="p-3 text-center">Qualifié demi-finale</th>
                 <th className="p-3 text-center text-bronze">Bronze</th>
                 <th className="p-3 text-center text-argent">Argent</th>
                 <th className="p-3 text-center text-or">Or</th>
@@ -90,14 +114,13 @@ export default function VueSecretariat({ slug }: { slug: string }) {
             </thead>
             <tbody>
               {lignes.map(({ d, m }) => (
-                <tr key={d.id} className={`border-t border-mk-ligne ${d.present === false ? "opacity-40" : ""}`}>
+                <tr key={d.id} className={`border-t border-mk-ligne ${d.present !== true ? "opacity-40" : ""}`}>
                   <td className="p-3 font-extrabold tabular-nums">{fmt(d.dossard)}</td>
                   <td className="p-3 font-semibold uppercase">{d.nom}</td>
                   <td className="p-3">{d.prenom}</td>
                   <td className="p-3">
                     {d.present === true && <span className="font-semibold text-ok">Présent</span>}
-                    {d.present === false && <span className="font-semibold text-mk-rouge">Absent</span>}
-                    {d.present === null && <span className="text-mk-gris">—</span>}
+                    {d.present !== true && <span className="font-semibold text-mk-rouge">Absent</span>}
                   </td>
                   <td className="p-3 text-center">{coche(d.qualif_t1)}</td>
                   <td className="p-3 text-center">{coche(d.qualif_rep)}</td>

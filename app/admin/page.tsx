@@ -50,12 +50,12 @@ export default function AdminPage() {
   async function remiseAZero() {
     if (!confirm(
       "Remettre la compétition à zéro ?\n\n" +
-      "Toutes les présences, les passages figés et les sélections du jury seront effacés. " +
+      "Tous les danseurs repassent absents ; les passages figés et les sélections du jury seront effacés. " +
       "La liste des danseurs est conservée."
     )) return;
     const { error } = await supabase
       .from("danseurs")
-      .update({ present: null, qualif_t1: false, qualif_rep: false, or_finale: false, passage: null })
+      .update({ present: false, qualif_t1: false, qualif_rep: false, or_finale: false, passage: null })
       .not("id", "is", null);
     const { error: e2 } = await supabase.from("categories").update({ demarree: false }).not("id", "is", null);
     alert(error || e2 ? "Erreur : " + (error ?? e2)!.message : "✅ Compétition remise à zéro");

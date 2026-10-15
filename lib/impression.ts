@@ -8,11 +8,22 @@ export type TypeImpression = "premier-tour" | "demi-finale";
 const echapper = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function bloc(titre: string, sousTitre: string, liste: Danseur[], accent: boolean) {
+type Style = "finale" | "demi" | "bronze";
+
+const ETIQUETTES: Record<Style, string> = {
+  finale: "★ FINALE",
+  demi: "↻ DEMI-FINALE",
+  bronze: "● BRONZE",
+};
+
+// Tout tient sur une seule feuille A3 : un bloc par liste (finale / demi-finale / bronze),
+// chaque carte porte aussi son statut pour qu'on sache où va le danseur, même de loin.
+function bloc(style: Style, titreListe: string, explication: string, liste: Danseur[]) {
   const cartes = liste
     .map(
       (d) => `
-      <div class="carte">
+      <div class="carte ${style}">
+        <div class="statut">${ETIQUETTES[style]}</div>
         <div class="dossard">${fmt(d.dossard)}</div>
         <div class="nom">${echapper(d.nom)}</div>
         <div class="prenom">${echapper(d.prenom)}</div>
@@ -20,15 +31,19 @@ function bloc(titre: string, sousTitre: string, liste: Danseur[], accent: boolea
     )
     .join("");
   return `
-    <section>
-      <h2 class="${accent ? "accent" : ""}">${titre}</h2>
-      <p class="sous">${sousTitre}</p>
-      <div class="grille">${cartes || '<p class="vide">Aucun danseur</p>'}</div>
-    </section>`;
+  <section class="${style}">
+    <div class="titre-bloc">
+      <h2>${titreListe}</h2>
+      <p>${explication}</p>
+    </div>
+    <div class="grille">${cartes || '<p class="vide">Aucun danseur</p>'}</div>
+  </section>`;
 }
 
 export function imprimerResultats(type: TypeImpression, categorie: Categorie, danseurs: Danseur[]) {
   const presents = actifs(danseurs); // déjà triés par dossard
+  const heure = new Date().toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  const jury = lettre(categorie.jury);
   let titre: string;
   let contenu: string;
 
@@ -37,49 +52,69 @@ export function imprimerResultats(type: TypeImpression, categorie: Categorie, da
     const demi = presents.filter((d) => !d.qualif_t1);
     titre = "Résultats du 1er tour";
     contenu =
-      bloc("Qualifiés pour la finale", "Directement qualifiés à l'issue du 1er tour", finale, true) +
-      bloc("Demi-finale", "Ces danseurs passent en demi-finale", demi, false);
+      bloc("finale", "★ Qualifiés pour la finale","", finale) +
+      bloc("demi", "↻ Demi-finale","", demi);
   } else {
     const demi = presents.filter((d) => !d.qualif_t1);
     const finale = demi.filter((d) => d.qualif_rep);
     const bronze = demi.filter((d) => !d.qualif_rep);
     titre = "Résultats de la demi-finale";
     contenu =
-      bloc("Qualifiés pour la finale", "Qualifiés à l'issue de la demi-finale", finale, true) +
-      bloc("Médaille de bronze", "Félicitations à tous ces danseurs !", bronze, false);
+      bloc("finale", "★ Qualifiés pour la finale", "", finale) +
+      bloc("bronze", "● Médaille de bronze", "", bronze);
   }
 
-  const jury = lettre(categorie.jury);
-  const heure = new Date().toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
-
+  // Les couleurs de fond ne sont pas toujours imprimées (option « graphiques d'arrière-plan ») :
+  // tout est lisible en noir sur blanc ; la couleur passe surtout par les bordures.
   const html = `<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <title>${echapper(categorie.nom)} – ${titre}</title>
 <style>
-  @page { size: A3 landscape; margin: 12mm; }
-  * { box-sizing: border-box; }
-  body { font-family: "Open Sans", Arial, sans-serif; color: #111; margin: 0; }
-  header { display: flex; justify-content: space-between; align-items: flex-end;
-           border-bottom: 4px solid #e53935; padding-bottom: 10px; margin-bottom: 18px; }
-  .marque { color: #e53935; font-weight: 800; letter-spacing: .08em; font-size: 18px; }
-  h1 { margin: 2px 0 0; font-size: 40px; text-transform: uppercase; }
-  .titre { font-size: 26px; font-weight: 700; }
-  .infos { text-align: right; font-size: 14px; color: #555; }
-  section { margin-bottom: 24px; break-inside: auto; }
-  h2 { font-size: 26px; text-transform: uppercase; margin: 0; padding: 8px 14px;
-       background: #222; color: #fff; }
-  h2.accent { background: #e53935; }
-  .sous { margin: 6px 0 10px; font-size: 14px; color: #555; }
-  .grille { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-  .carte { border: 2px solid #222; border-radius: 8px; padding: 8px 10px; break-inside: avoid; }
-  .dossard { font-size: 40px; font-weight: 800; line-height: 1; }
-  .nom { font-size: 15px; font-weight: 700; text-transform: uppercase; margin-top: 3px;
+  @page { size: A3 landscape; margin: 10mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; }
+  body { font-family: "Open Sans", Arial, sans-serif; color: #111; }
+  /* Zone imprimable d'un A3 paysage (400 × 277 mm) : le contenu est réduit pour tenir sur une page */
+  #page { width: 400mm; }
+
+  header { display: flex; justify-content: space-between; align-items: center; gap: 24px;
+           border-bottom: 8px solid #e53935; padding-bottom: 10px; margin-bottom: 14px; }
+  .marque { color: #e53935; font-weight: 800; letter-spacing: .08em; font-size: 16px; }
+  h1 { margin: 2px 0 0; font-size: 50px; line-height: 1.05; text-transform: uppercase; font-weight: 900; }
+  .tour { text-align: center; border: 6px solid #111; border-radius: 14px; padding: 8px 24px; white-space: nowrap;
+          font-size: 36px; font-weight: 900; text-transform: uppercase; }
+  .tour small { display: block; font-size: 15px; font-weight: 600; color: #444; text-transform: none; }
+
+  section { border: 4px solid #111; border-radius: 14px; padding: 10px 12px 12px; margin-bottom: 14px; }
+  section.finale { border-color: #e53935; }
+  section.demi { border-style: dashed; }
+  section.bronze { border-color: #b8722c; }
+  .titre-bloc { display: flex; align-items: baseline; gap: 18px; margin-bottom: 10px; }
+  h2 { margin: 0; font-size: 38px; text-transform: uppercase; font-weight: 900; }
+  .finale h2 { color: #c62828; }
+  .bronze h2 { color: #8a5320; }
+  .titre-bloc p { margin: 0; font-size: 20px; font-weight: 700; color: #333; }
+
+  .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 7px; }
+  .carte { border: 3px solid #111; border-radius: 10px; overflow: hidden; break-inside: avoid; }
+  .carte.demi { border-style: dashed; }
+  .carte.finale { border-color: #e53935; }
+  .carte.bronze { border-color: #b8722c; }
+  .statut { font-size: 12px; font-weight: 900; letter-spacing: .05em; padding: 2px 7px;
+            border-bottom: 2px solid currentColor; }
+  .finale .statut { background: #fde3e2; color: #b71c1c; }
+  .demi .statut { background: #eee; color: #222; }
+  .bronze .statut { background: #f6e3cf; color: #7a4a17; }
+  .dossard { font-size: 42px; font-weight: 900; line-height: 1; padding: 5px 7px 0; }
+  .nom { font-size: 13px; font-weight: 800; text-transform: uppercase; padding: 2px 7px 0;
          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .prenom { font-size: 14px; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .vide { color: #777; font-style: italic; grid-column: 1 / -1; }
-  .action { position: fixed; top: 10px; right: 10px; }
+  .prenom { font-size: 12px; color: #444; padding: 0 7px 5px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vide { color: #777; font-style: italic; grid-column: 1 / -1; font-size: 20px; margin: 0; }
+
+  .action { position: fixed; top: 10px; right: 10px; z-index: 2; }
   .action button { font-size: 14px; padding: 8px 14px; background: #e53935; color: #fff;
                    border: 0; border-radius: 6px; cursor: pointer; }
   @media print { .action { display: none; } }
@@ -87,16 +122,41 @@ export function imprimerResultats(type: TypeImpression, categorie: Categorie, da
 </head>
 <body>
   <div class="action"><button onclick="window.print()">🖨 Imprimer</button></div>
-  <header>
-    <div>
-      <div class="marque">MARKADAS · COMPÉTITION</div>
-      <h1>${echapper(categorie.nom)}</h1>
-      <div class="titre">${titre}</div>
-    </div>
-    <div class="infos">Jury ${jury} · Piste ${jury}<br>Édité le ${heure}</div>
-  </header>
-  ${contenu}
-  <script>window.onload = () => setTimeout(() => window.print(), 300);</script>
+  <div id="page">
+    <header>
+      <div>
+        <div class="marque">MARKADAS · COMPÉTITION · JURY ${jury} · PISTE ${jury}</div>
+        <h1>${echapper(categorie.nom)}</h1>
+      </div>
+      <div class="tour">${titre}<small>Cherchez votre dossard</small></div>
+    </header>
+    ${contenu}
+  </div>
+  <script>
+    // Réduit l'ensemble pour qu'il tienne sur UNE page A3 paysage, quelle que soit la taille de la catégorie
+    function ajuster() {
+      var page = document.getElementById("page");
+      page.style.zoom = "1";
+      page.style.width = "400mm";
+      var mm = page.offsetWidth / 400;            // pixels par millimètre
+      var hauteurMax = 277 * mm - 6;              // hauteur imprimable d'un A3 paysage
+      // Hauteur finale pour une échelle donnée : la page est élargie (plus de colonnes) puis réduite
+      function hauteur(e) { page.style.width = (400 / e) + "mm"; return page.offsetHeight * e; }
+      var echelle = 1;
+      if (hauteur(1) > hauteurMax) {
+        // Recherche de la plus grande échelle qui tient sur une page
+        var bas = 0.15, haut = 1;
+        for (var i = 0; i < 14; i++) {
+          var milieu = (bas + haut) / 2;
+          if (hauteur(milieu) <= hauteurMax) bas = milieu; else haut = milieu;
+        }
+        echelle = bas;
+      }
+      page.style.width = (400 / echelle) + "mm";
+      page.style.zoom = String(echelle);          // « zoom » réduit vraiment la mise en page (pagination comprise)
+    }
+    window.onload = function () { ajuster(); setTimeout(function () { window.print(); }, 300); };
+  </script>
 </body>
 </html>`;
 

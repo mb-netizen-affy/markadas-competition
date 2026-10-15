@@ -47,7 +47,7 @@ export default function Entete({
             )}
           </div>
           <div className="min-w-0 flex-1 border-l border-mk-ligne pl-3">
-            <h1 className="mk-titre truncate text-xl sm:text-2xl">{titre}</h1>
+            <h1 className="mk-titre line-clamp-2 break-words text-lg leading-tight sm:text-2xl">{titre}</h1>
             {sousTitre && (
               <p className="text-xs font-semibold uppercase tracking-wider text-mk-gris">{sousTitre}</p>
             )}

@@ -273,6 +273,9 @@ function Passage({
   const nb = danseurs.filter(estCoche).length;
   const depasse = aRetenir > 0 && nb > aRetenir;
   const complet = aRetenir > 0 && nb === aRetenir;
+  // Quota atteint (jury uniquement) : on ne peut plus sélectionner de nouveau dossard,
+  // il faut d'abord en désélectionner un
+  const verrouille = !!onClic && compteur && aRetenir > 0 && nb >= aRetenir;
 
   // Lignes équilibrées : 21 danseurs avec 8 max par ligne → 3 lignes de 7 (et non 8 · 8 · 5)
   const nbLignes = Math.max(1, Math.ceil(danseurs.length / Math.max(1, parLigne)));
@@ -280,9 +283,9 @@ function Passage({
   const colonnes = Math.max(1, ...lignes.map((l) => l.length));
 
   return (
-    <section className="mk-carte space-y-3">
+    <section className={`mk-carte space-y-3 transition ${verrouille ? "bg-mk-noir/60" : ""}`}>
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="mk-titre text-lg">{titre}</h2>
+        <h2 className={`mk-titre text-lg ${verrouille ? "text-mk-gris" : ""}`}>{titre}</h2>
         <span className="text-xs font-semibold uppercase text-mk-gris">{danseurs.length} danseurs</span>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -293,6 +296,7 @@ function Passage({
               depasse ? "bg-mk-rouge text-white" : complet ? "bg-ok text-white" : "bg-mk-carte2 text-white"
             }`}
           >
+            {verrouille && !depasse && "✔ "}
             {nb}{aRetenir > 0 && ` / ${aRetenir}`} sélectionné{nb > 1 ? "s" : ""}
           </span>
         )}
@@ -310,9 +314,10 @@ function Passage({
               style={{ gridTemplateColumns: `repeat(${colonnes}, minmax(0, 1fr))` }}
             >
               {ligne.map((d) => {
+                const bloque = verrouille && !estCoche(d); // non sélectionné alors que le quota est atteint
                 const style = `rounded-md py-3 text-center text-base font-extrabold tabular-nums transition sm:text-xl ${
                   estCoche(d) ? coulCoche : "bg-mk-carte2 text-white"
-                } ${onClic ? "active:scale-95" : ""}`;
+                } ${bloque ? "cursor-not-allowed opacity-35" : onClic ? "active:scale-95" : ""}`;
                 const contenu = (
                   <>
                     {fmt(d.dossard)}
@@ -320,7 +325,7 @@ function Passage({
                   </>
                 );
                 return onClic ? (
-                  <button key={d.id} onClick={() => onClic(d)} className={style}>{contenu}</button>
+                  <button key={d.id} onClick={() => onClic(d)} disabled={bloque} className={style}>{contenu}</button>
                 ) : (
                   <div key={d.id} className={style}>{contenu}</div>
                 );

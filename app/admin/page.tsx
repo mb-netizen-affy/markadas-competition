@@ -10,10 +10,27 @@ import Liens from "@/components/admin/Liens";
 import ReglagesPassages from "@/components/admin/ReglagesPassages";
 import SecretariatGeneral from "@/components/admin/SecretariatGeneral";
 import GestionDanseurs from "@/components/admin/GestionDanseurs";
+import Connexion from "@/components/admin/Connexion";
+import type { Session } from "@supabase/supabase-js";
 
 type Onglet = "categories" | "danseurs" | "import" | "liens" | "secretariat";
 
+// L'admin est protégé : il faut se connecter (compte Supabase) pour y accéder
 export default function AdminPage() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (session === undefined)
+    return <p className="flex min-h-screen items-center justify-center text-mk-gris">Chargement…</p>;
+  if (!session) return <Connexion />;
+  return <Administration />;
+}
+
+function Administration() {
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [compteurs, setCompteurs] = useState<Record<string, number>>({});
   const [presents, setPresents] = useState<Record<string, number>>({});
@@ -77,9 +94,14 @@ export default function AdminPage() {
         titre="Administration"
         sousTitre={`${categories.length} catégories · ${total} danseurs inscrits`}
         droite={
-          <Link href="/" className="mk-btn mk-btn-contour shrink-0 px-3 py-1.5 text-xs" aria-label="Accueil">
-            ⌂ Accueil
-          </Link>
+          <div className="flex shrink-0 gap-2">
+            <Link href="/" className="mk-btn mk-btn-contour px-3 py-1.5 text-xs" aria-label="Accueil">
+              ⌂ Accueil
+            </Link>
+            <button onClick={() => supabase.auth.signOut()} className="mk-btn mk-btn-sombre border border-mk-ligne px-3 py-1.5 text-xs">
+              Déconnexion
+            </button>
+          </div>
         }
       >
         <nav className="grid grid-cols-3 gap-2 sm:grid-cols-5">
